@@ -19,8 +19,10 @@ USAGE:
     other flags:
         -e      set input file encoding
         -o      set output file encoding
-        -t      set trace (debugging output)
-
+        --t      set trace (debugging output)
+        --srclang force input language
+        --tolang set output language
+        --ext change translate file extension (by default, a copy is made with name src.tolang e.g: index.ts -> index.ts.en) 
 
 DECODE/ENCODE NOTES:
     the default encoding and decoding is utf-8. specifying 'auto' for the

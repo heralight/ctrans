@@ -19,13 +19,27 @@ import sys
 import urllib
 import simplejson
 
+import json
+import sys
+reload(sys)
+sys.setdefaultencoding('utf-8')
+
+try:
+    from urllib import urlencode
+except:
+    from urllib.parse import urlencode
+
+try:
+    import urllib2
+except:
+    import urllib.request as urllib2
 
 ### globals ###
  
 # variables from halotis' code
-baseUrl     = "http://ajax.googleapis.com/ajax/services/language/translate"
-lang        = 'en'
 
+lang        = 'en'
+src_lang    = 'zh-CN'
 # misc vars
 trace       = False                                 # enable debugging output
 ext         = '.en'                                 # extension of translated
@@ -45,8 +59,34 @@ scrub_lcomments = re.compile(r'//(.+)', re.U & re.M)
 scrub_scomments = re.compile(r'#\s*(.+)', re.U & re.M)
 
 # extensions for valid source files
-source_exts     = { 'c-style':[ 'c', 'cpp', 'cc', 'h', 'hpp' ],
+source_exts     = { 'c-style':[ 'c', 'cpp', 'cc', 'h', 'hpp', 'js','ts' ],
                     'script': [ 'py', 'pl', 'rb' ] }
+
+
+
+def format_json(result, max_entries=5):
+    ret = []
+    for sentence in result['sentences']:
+        ret.append(sentence['orig'] + ': ' + sentence['trans'])
+        ret.append('')
+
+    # format pos
+    if 'dict' in result:
+        for pos in result['dict']:
+            ret.append(pos['pos'])
+            for entry in pos['entry'][:max_entries]:
+                ret.append(entry['word'] + ': ' + ', '.join(entry['reverse_translation']))
+            ret.append('')
+
+    return '\n'.join(ret)
+
+
+def extract_translate(result, max_entries=5):
+    ret = []
+    for sentence in result['sentences']:
+        ret.append(sentence['orig'] + ': ' + sentence['trans'])
+        return sentence['trans']
+
 
  
 def get_splits(text, splitLength = 4500):
@@ -57,6 +97,31 @@ def get_splits(text, splitLength = 4500):
     
     return (text[index:index + splitLength]
             for index in xrange(0, len(text), splitLength))
+
+
+
+
+def translate_call(text, from_lang="auto", to_lang="zh-CN"):
+    """translate text, return the result as json"""
+    url = 'https://translate.googleapis.com/translate_a/single?'
+
+    params = []
+    params.append('client=gtx')
+    params.append('sl=' + from_lang)
+    params.append('tl=' + to_lang)
+    params.append('hl=en-US')
+    params.append('dt=t')
+    params.append('dt=bd')
+    params.append('dj=1')
+    params.append('source=input')
+    params.append(urlencode({'q': text}))
+    url += '&'.join(params)
+
+    request = urllib2.Request(url)
+    browser = "Mozilla/5.0 (X11; Linux x86_64; rv:45.0) Gecko/20100101 Firefox/45.0"
+    request.add_header('User-Agent', browser)
+    response = urllib2.urlopen(request)
+    return json.loads(response.read().decode('utf8'))
  
  
 def translate(text, src = '', to = lang):
@@ -68,29 +133,17 @@ def translate(text, src = '', to = lang):
         * Splits up text if it's longer then 4500 characters, as a limit put
         up by the API
     """
- 
-    params = ( {
-                'langpair': '%s|%s' % (src, to),
-                'v': '1.0'
-            } )
-    
+    src = src_lang
     retText = ''
     
     for text in get_splits(text):
             if trace: print '[+] translation requested...'
             sys.stdout.flush()
-            params['q'] = text
             
-            resp = simplejson.load(
-                                urllib.urlopen('%s' % (baseUrl),
-                                data = urllib.urlencode(params))
-                                )
-            
-            try:
-                    retText += resp['responseData']['translatedText']
-            except:
-                    retText += text
-            if trace: print '\treceived!'
+            resDic = translate_call(text, src,to)
+            resText = extract_translate(resDic)
+            retText += resText
+            if trace: print(text + ": " + resText)
     return retText
 
 
@@ -300,7 +353,7 @@ def is_script(filename):
 
 ##### start main code #####
 if __name__ == '__main__':
-    (opts, args)    = getopt.getopt(sys.argv[1:], 's:d:e:o:t')
+    (opts, args)    = getopt.getopt(sys.argv[1:], 's:d:e:o', ['t', 'srclang=', 'tolang=', 'ext='])
     dir_mode        = False
     target          = None
     
@@ -318,7 +371,14 @@ if __name__ == '__main__':
                 autodetect = True
         if opt == '-o':
             decodeas = arg
-            
+        if opt == '--t':
+            trace = True
+        if opt == '--srclang':
+            src_lang = arg
+        if opt == '--tolang':
+            lang = arg
+        if opt == '--ext':
+           ext = arg
     
     if dir_mode:
         scan_dir(target)
